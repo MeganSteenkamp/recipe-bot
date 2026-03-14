@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "pip install uv && uv sync"
+
+[deploy]
+startCommand = "uv run python bot.py"
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 10
