@@ -1,4 +1,8 @@
+import json
 import os
+from datetime import date
+from urllib.parse import urlparse
+
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -6,6 +10,47 @@ load_dotenv()
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 MODEL = "gpt-4o-mini"
+
+
+def extract_recipe_from_text(url: str, page_text: str) -> dict:
+    """Extract a recipe dict from raw page text using the LLM."""
+    system = """\
+You are a recipe extraction assistant. Given the raw text of a recipe webpage, extract the recipe details.
+Respond ONLY with a valid JSON object — no markdown, no extra text.
+
+JSON fields (use null for anything missing):
+{
+  "title": "string",
+  "ingredients": ["string", ...],
+  "instructions": "string",
+  "cook_time": "string (e.g. '30 min', '1 h')",
+  "servings": "string (e.g. 'Serves 4')"
+}"""
+
+    resp = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"URL: {url}\n\nPage text:\n{page_text}"},
+        ],
+        temperature=0,
+        max_tokens=1200,
+    )
+    data = json.loads(resp.choices[0].message.content.strip())
+
+    site = urlparse(url).netloc.replace("www.", "")
+    return {
+        "url": url,
+        "title": data["title"],
+        "creator": site,
+        "site": site,
+        "added": date.today().isoformat(),
+        "ingredients": data.get("ingredients") or [],
+        "instructions": data.get("instructions") or "",
+        "cook_time": data.get("cook_time"),
+        "servings": data.get("servings"),
+        "image": None,
+    }
 
 
 def select_recipes(recipes: list, recently_used: list) -> str:

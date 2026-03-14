@@ -314,12 +314,20 @@ def _send_weekly_suggestions(chat_id: int) -> None:
 
     bot.send_message(
         chat_id,
-        (
-            "Here are this week's 6 real recipes I think you'll love\n"
-            "Reply with the numbers you want (e.g. 1 3 5)\n\n"
-            f"{suggestion_text}"
-        ),
+        "Here are this week's 6 real recipes I think you'll love\nReply with the numbers you want (e.g. 1 3 5)",
     )
+
+    blocks = _parse_suggestion_blocks(suggestion_text)
+    for i, recipe in enumerate(pending_suggestions[chat_id]):
+        caption = blocks[i] if i < len(blocks) else f"{i + 1}. {recipe['title']} — {recipe['creator']}"
+        image_url = recipe.get("image")
+        if image_url:
+            try:
+                bot.send_photo(chat_id, image_url, caption=caption)
+                continue
+            except Exception as e:
+                logger.warning(f"Could not send photo for {recipe['title']}: {e}")
+        bot.send_message(chat_id, caption)
 
 
 def _match_suggestions_to_library(suggestion_text: str, recipes: list) -> list:
@@ -354,6 +362,12 @@ def _match_suggestions_to_library(suggestion_text: str, recipes: list) -> list:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _parse_suggestion_blocks(text: str) -> list:
+    """Split LLM suggestion text into individual per-recipe blocks."""
+    blocks = re.split(r"\n(?=\d+\.)", text.strip())
+    return [b.strip() for b in blocks if b.strip()]
 
 
 def _split_message(text: str, limit: int = 4000) -> list:

@@ -1,5 +1,8 @@
+import re
 from datetime import date
 from urllib.parse import urlparse
+
+import requests
 from recipe_scrapers import scrape_me
 
 # Map known domains to friendly creator names
@@ -43,8 +46,28 @@ def _format_minutes(minutes) -> str:
     return f"{hours} h {mins} min" if mins else f"{hours} h"
 
 
+def _strip_html(html: str) -> str:
+    """Remove tags and collapse whitespace, keeping only readable text."""
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = re.sub(r"&[a-z]+;", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _llm_scrape(url: str) -> dict:
+    """Last-resort: fetch page HTML and ask the LLM to extract the recipe."""
+    from llm import extract_recipe_from_text
+
+    resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    text = _strip_html(resp.text)[:4000]
+    return extract_recipe_from_text(url, text)
+
+
 def scrape_recipe(url: str) -> dict:
-    scraper = scrape_me(url)
+    try:
+        scraper = scrape_me(url, wild_mode=True)
+    except Exception:
+        return _llm_scrape(url)
 
     site = _extract_site(url)
     creator = CREATOR_MAP.get(site, site)
@@ -59,6 +82,11 @@ def scrape_recipe(url: str) -> dict:
     except Exception:
         servings = None
 
+    try:
+        image = scraper.image()
+    except Exception:
+        image = None
+
     return {
         "url": url,
         "title": scraper.title(),
@@ -69,4 +97,5 @@ def scrape_recipe(url: str) -> dict:
         "instructions": scraper.instructions(),
         "cook_time": cook_time,
         "servings": servings,
+        "image": image,
     }
